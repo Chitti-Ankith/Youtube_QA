@@ -1,8 +1,7 @@
 # YouTube Question Answering
 
 ## Overview
-This app lets you ask questions about any YouTube video, and will only need to supply a Youtube URL and an OpenAI API key.
-Additionally, you can ask the app to generate a well-formatted blog of the video for you.
+This app lets you ask questions about any YouTube video, and you will only need to supply a Youtube URL and an OpenAI API key.
 
 This app is powered by EvaDB's Python API and ChatGPT UDF.
 
