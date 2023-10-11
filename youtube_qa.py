@@ -267,6 +267,36 @@ def generate_response(cursor: evadb.EvaDBCursor, question: str) -> str:
             .df()["chatgpt.response"][0]
         )
 
+def generate_local_video_transcript(cursor: evadb.EvaDBCursor, video_path: str) -> str:
+    """Extracts speech from video for llm processing.
+
+    Args:
+        cursor (EVADBCursor): evadb api cursor.
+        video_path (str): video path.
+
+    Returns:
+        str: video transcript text.
+    """
+    print(f"\n⏳ Analyzing local video from {video_path}. This may take a" " while...")
+
+    # load youtube video into an evadb table
+    cursor.query("DROP TABLE IF EXISTS local_video;").execute()
+    cursor.query(f"LOAD VIDEO '{video_path}' INTO local_video;").execute()
+
+    # extract speech texts from videos
+    cursor.query("DROP TABLE IF EXISTS local_video_text;").execute()
+    cursor.query(
+        "CREATE TABLE IF NOT EXISTS local_video_text AS SELECT"
+        " SpeechRecognizer(audio) FROM local_video;"
+    ).execute()
+    print("✅ Video analysis completed.")
+
+    # retrieve generated transcript
+    raw_transcript_string = cursor.query("SELECT text FROM local_video_text;").df()[
+        "local_video_text.text"
+    ][0]
+    return raw_transcript_string
+
 
 def cleanup():
     """Removes any temporary file / directory created by EvaDB."""
@@ -284,15 +314,24 @@ if __name__ == "__main__":
     try:
         # establish evadb api cursor
         cursor = evadb.connect().cursor()
+        raw_transcript_string = None
 
         if user_input["from_youtube"]:
             transcript = download_youtube_video_transcript(user_input["video_link"])
+            # Group the list of transcripts into a single raw transcript.
+            if transcript is not None:
+                raw_transcript_string = group_transcript(transcript)
+        else:
+             # create speech recognizer function from HuggingFace
 
-        raw_transcript_string = None
-
-        # Group the list of transcripts into a single raw transcript.
-        if transcript is not None:
-            raw_transcript_string = group_transcript(transcript)
+            speech_analyzer_function_query = """
+                CREATE FUNCTION SpeechRecognizer
+                TYPE HuggingFace
+                TASK 'automatic-speech-recognition'
+                MODEL 'openai/whisper-base';
+            """
+            cursor.query(speech_analyzer_function_query).execute()
+            raw_transcript_string = generate_local_video_transcript(cursor, user_input["video_local_path"])
 
         # Partition the transcripts if they are too big to circumvent LLM token restrictions.
         if raw_transcript_string is not None:
